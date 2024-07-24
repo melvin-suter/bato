@@ -3,4 +3,4 @@ plugins:
 - jekyll-remote-theme
 title: BaTo
 description: A collection of bash scripts
-show_downloads: false
+show_downloads: true
