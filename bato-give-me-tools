@@ -1,0 +1,6 @@
+#!/bin/bash
+
+echo "Okay, I shall give you some tools".
+
+
+dnf install -y -q wget vim curl zip unzip tar net-tools

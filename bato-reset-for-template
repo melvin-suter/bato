@@ -1,0 +1,50 @@
+#!/bin/bash
+# This script has been copied and reworkt from ranchers example:
+# https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/launch-kubernetes-with-rancher/use-new-nodes-in-an-infra-provider/vsphere/create-a-vm-template
+
+echo "This script will reset all machine specific informations for use as a template."
+echo "ARE YOU SURE YOU WANT TO DO THIS?"
+echo "Waiting for 10 seconds, so you can CTRL-C to abort..."
+sleep 10
+
+echo "... Cleaning logs"
+if [ -f /var/log/audit/audit.log ]; then
+  cat /dev/null > /var/log/audit/audit.log
+fi
+if [ -f /var/log/wtmp ]; then
+  cat /dev/null > /var/log/wtmp
+fi
+if [ -f /var/log/lastlog ]; then
+  cat /dev/null > /var/log/lastlog
+fi
+if [ -f /var/log/secure ]; then
+  cat /dev/null > /var/log/secure
+fi
+if [ -f /var/log/messages ]; then
+  cat /dev/null > /var/log/messages
+fi
+if [ -f /var/log/cron ]; then
+  cat /dev/null > /var/log/cron
+fi
+
+echo "... Cleaning the /tmp directories"
+rm -rf /tmp/*
+rm -rf /var/tmp/*
+
+echo "... Cleaning the SSH host keys"
+rm -f /etc/ssh/ssh_host_*
+
+echo "... Cleaning the machine-id"
+truncate -s 0 /etc/machine-id
+rm /var/lib/dbus/machine-id
+ln -s /etc/machine-id /var/lib/dbus/machine-id
+
+echo "... Cleaning the shell history"
+unset HISTFILE
+history -cw
+echo > ~/.bash_history
+rm -fr /root/.bash_history
+
+echo "... Truncating hostname, hosts, resolv.conf and setting hostname to localhost"
+truncate -s 0 /etc/{hostname,hosts,resolv.conf}
+hostnamectl set-hostname localhost

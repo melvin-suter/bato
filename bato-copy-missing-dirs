@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Make sure you either use a tailing / on both or none of the following variables!!!
+SOURCE_DIR="$1"
+DEST_DIR="$2"
+
+if [ ! test -d $SOURCE_DIR ] || [ ! test -d $DEST_DIR ] ; then
+    >&2 echo "ERROR: paths are missing or not existing"
+    >&2 echo ""
+
+    echo "This script will copy all sub-directories from source to destination, but only if the directory doesn't exist in the destination yet."
+    echo "Usage:"
+    echo "$0 /path/to/source /path/to/dest"
+    echo "! Make sure you either use a tailing / on both or none of the following variables !"
+
+    exit 1
+fi
+
+find $SOURCE_DIR -maxdepth 1 -type d | sed -E "s;^$SOURCE_DIR;;" | while read dir ; do
+  test -d $DEST_DIR$dir || /bin/cp -Rf $SOURCE_DIR$dir $DEST_DIR$dir
+done
