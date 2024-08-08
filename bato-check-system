@@ -1,0 +1,145 @@
+#!/bin/bash
+
+ERRORS="Errors:"
+STATE="SUCCESS"
+
+# OS Type
+if grep rhel /etc/os-release >/dev/null 2>&1 ; then
+    OS_TYPE="RHEL"
+fi
+if grep debian /etc/os-release >/dev/null 2>&1 ; then
+    OS_TYPE="DEBIAN"
+fi
+
+# Check tools
+if ! which bc >/dev/null 2>&1 ; then
+    if [[ $OS_TYPE == "RHEL" ]] ; then
+        dnf install -y -q bc
+    fi
+    if [[ $OS_TYPE == "DEBIAN" ]] ; then
+        apt-get install -y -q bc
+    fi
+fi
+
+###############
+# CPU Usage
+###############
+
+CPU_COUNT="$(lscpu | grep -E '^CPU\(s\)' | awk '{print $2}')"
+CPU_LOAD_1m="$(uptime | awk '{print $11}' | sed 's;,;;')"
+CPU_LOAD_5m="$(uptime | awk '{print $11}' | sed 's;,;;')"
+CPU_LOAD_15m="$(uptime | awk '{print $12}')"
+CPU_UTIL_1m="$(printf "%.0f" $(bc <<< "scale=3; $CPU_LOAD_1m / $CPU_COUNT * 100"))"
+CPU_UTIL_5m="$(printf "%.0f" $(bc <<< "scale=3; $CPU_LOAD_5m / $CPU_COUNT * 100"))"
+CPU_UTIL_15m="$(printf "%.0f" $(bc <<< "scale=3; $CPU_LOAD_15m / $CPU_COUNT * 100"))"
+
+if [[ $CPU_UTIL_15m > 90 ]] ; then
+    ERRORS="$ERRORS\nCPU Load to high"
+    STATE="FAILED"
+fi
+
+
+echo "### CPU ###"
+echo "CPU Count: $CPU_COUNT"
+echo "CPU Load (1m, 5m, 15m): $CPU_LOAD_1m, $CPU_LOAD_5m, $CPU_LOAD_15m"
+echo "CPU Usage (1m, 5m, 15m): $CPU_UTIL_1m%, $CPU_UTIL_5m%, $CPU_UTIL_15m%"
+echo ""
+
+
+###############
+# Memory
+###############
+
+MEM_TOTAL="$(free --giga | grep -E '^Mem' | awk '{print $2}')"
+MEM_FREE="$(free --giga | grep -E '^Mem' | awk '{print $3}')"
+MEM_AVAIL="$(free --giga | grep -E '^Mem' | awk '{print $6}')"
+MEM_FREE_PERC="$(printf "%.0f" $(bc <<< "scale=3; $MEM_FREE / $MEM_TOTAL * 100"))"
+MEM_AVAIL_PERC="$(printf "%.0f" $(bc <<< "scale=3; $MEM_AVAIL / $MEM_TOTAL * 100"))"
+
+if [[ $MEM_AVAIL_PERC < 25 ]] ; then
+    ERRORS="$ERRORS\nMemory available to low"
+    STATE="FAILED"
+fi
+echo "### MEMORY ###"
+echo "Memory Total: $MEM_TOTAL GB"
+echo "Memory Available: $MEM_AVAIL GB"
+echo "Memory Free (%): $MEM_FREE_PERC%"
+echo "Memory Available (%): $MEM_AVAIL_PERC%"
+echo ""
+
+
+
+###############
+# Disk
+###############
+
+echo "### DISK ###"
+while read line ; do
+    DISK_NAME=$(echo $line | awk '{print $1}')
+    DISK_SIZE=$(echo $line | awk '{print $2}')
+    DISK_AVAIL=$(echo $line | awk '{print $4}')
+    DISK_USED_PERC=$(echo $line | awk '{print $5}')
+
+    echo "Disk: $DISK_NAME"
+    echo ".. Size: $DISK_SIZE"
+    echo ".. Available: $DISK_AVAIL"
+    echo ".. Usage: $DISK_USED_PERC"
+
+    if [[ $(echo $DISK_USED_PERC | sed 's;%;;') > 90 ]] ; then
+        ERRORS="$ERRORS\nDiskspace on $DISK_NAME is to low"
+        STATE="FAILED"
+    fi
+done <<< $(df -h | grep -i -E '^(/dev/mapper|/dev/sd|/dev/hd|/dev/nvme)' | grep -v -E '( /boot$|/boot/.*$)')
+echo ""
+
+
+
+###############
+#   Reboot
+###############
+echo "### Reboot ###"
+
+if [[ $OS_TYPE == "RHEL" ]] ; then
+    if [[ $(needs-restarting -r > /dev/null 2>&1 ; echo $?) > 0 ]] ; then
+        ERRORS="$ERRORS\nSystem needs reboot"
+        STATE="FAILED"
+    fi
+fi
+
+if [[ $OS_TYPE == "DEBIAN" ]] ; then
+    if [ -f /var/run/reboot-required ]; then
+        ERRORS="$ERRORS\nSystem needs reboot"
+        STATE="FAILED"
+    fi
+fi
+echo ""
+
+
+###############
+#   Packages
+###############
+echo "### Packages ###"
+
+if [[ $OS_TYPE == "RHEL" ]] ; then
+    echo "System Install Date: $(rpm -qa --last | head -n 1 | cut -d" " -f 2- | sed 's;^\s*;;')"
+    echo "System last Update:  $(rpm -qa --last | tail -n 1 | cut -d" " -f 2- | sed 's;^\s*;;')"
+
+    UPDATE_COUNT="$(dnf list updates -q | tail -n+2 | wc -l)"
+    echo "Available Updates:   $UPDATE_COUNT"
+
+    if [[ $UPDATE_COUNT > 15 ]] ; then
+        ERRORS="$ERRORS\nSystem needs more than 15 packages updated"
+        STATE="FAILED"
+    fi
+fi
+
+# TODO: Add the same for debian based
+
+echo ""
+
+# Output
+
+echo "### STATUS: $STATE"
+if [[ $STATE != "SUCCESS" ]] ; then
+    echo -e $ERRORS
+fi 
